@@ -1,7 +1,9 @@
 ﻿using CAS.Models.DTO;
 using Microsoft.AspNetCore.Mvc;
 using Models.Models.DBEntities;
+using Models.Models.DTO;
 using Models.Models.DTO.Requests;
+using repository.Interfaces;
 using service.Interfaces;
 
 namespace CAS.Controllers
@@ -13,12 +15,17 @@ namespace CAS.Controllers
         private readonly IResponseService _responseService;
         private readonly IAuctionService _auctionService;
         private readonly IVehicleService _vehicleService;
+        private readonly IAuctionedVehicleRepository _auctionedVehicleRepository;
+        private readonly IBidRepository _bidRepository;
 
-        public AuctionController(IAuctionService auctionService, IResponseService responseService, IVehicleService vehicleService)
+        public AuctionController(IAuctionService auctionService, IResponseService responseService, IVehicleService vehicleService,
+                                    IAuctionedVehicleRepository auctionedVehicleRepository, IBidRepository bidRepository)
         {
             _auctionService = auctionService;
             _responseService = responseService;
             _vehicleService = vehicleService;
+            _auctionedVehicleRepository = auctionedVehicleRepository;
+            _bidRepository = bidRepository;
         }
 
         [HttpPost("create-auction")]
@@ -75,13 +82,50 @@ namespace CAS.Controllers
         {
             try
             {
+                var response = new CloseAuctionResponseDTO { auctionedVehicleDTOs = new List<AuctionedVehicleDTO>()};
+
                 var auction = await _auctionService.GetAuctionByIdWithIncludeAsync(auctionId);
 
                 if (auction is null)
                     return _responseService.Error(404, $"Auction not found with Id: {auctionId}");
 
+                if(auction.EndDate < DateTime.UtcNow)
+                    return _responseService.Error(404, $"Auction is already closed");
+
                 auction.EndDate = DateTime.UtcNow;
                 await _auctionService.UpdateAuctionAsync(auction);
+
+                var auctionAuctionedVehiclesIds = auction.AuctionedVehicles.Where(x => !x.IsRemovedFromAuction).Select(x => x.Id);
+
+                if (!auctionAuctionedVehiclesIds.Any())
+                    return _responseService.Ok(auction);
+
+                foreach(var auctionAuctionedVehiclesId in auctionAuctionedVehiclesIds)
+                {
+                    var auctionedVehicle = await _auctionedVehicleRepository.GetAsync(auctionAuctionedVehiclesId);
+
+                    var bidsForAuctionedVehicle = await _bidRepository.GetAllBidsForAuctionedVehicle(auctionedVehicle.Id);
+
+                    if (!bidsForAuctionedVehicle.Any())
+                    {
+                        response.auctionedVehicleDTOs.Add(new AuctionedVehicleDTO
+                        {
+                            AuctionedVehicleId = auctionedVehicle.Id,
+                            HighestBid = 0
+                        });
+                    }
+
+                    var maxBid = bidsForAuctionedVehicle.OrderByDescending(x => x.OfferedBid).First();
+                        
+                    response.auctionedVehicleDTOs.Add(new AuctionedVehicleDTO
+                    {
+                        AuctionedVehicleId = auctionedVehicle.Id,
+                        HighestBid = maxBid.OfferedBid,
+                        HighestBidderUserId = maxBid.UserId
+                    });
+
+                    return _responseService.Ok(response);
+                }
 
                 return _responseService.Ok(auction);
             }
