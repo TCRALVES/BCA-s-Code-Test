@@ -74,20 +74,20 @@ namespace CAS.Controllers
             }
         }
 
-        //[HttpGet]
-        //[Route("get-vehicle-by-list-of-types")]
-        //public async Task<CustomResponse> GetVehicleByListOfTypes([FromQuery] List<VehicleTypeEnum> types)
-        //{
-        //    try
-        //    {
-        //        return _responseService.Ok(await _vehicleService.GetVehiclesByListOfTypesAsync(types.ToArray()));
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        return _responseService.UnknownError("Unknown Error occurred while trying to retrieve vehicle by type.", ex);
-        //        //Implement Logging of exception.
-        //    }
-        //}
+        [HttpGet]
+        [Route("get-vehicle-by-list-of-types")]
+        public async Task<CustomResponse> GetVehicleByListOfTypes([FromQuery] IEnumerable<VehicleTypeEnum> types)
+        {
+            try
+            {
+                return _responseService.Ok(await _vehicleService.GetVehiclesByListOfTypesAsync(types.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                return _responseService.UnknownError("Unknown Error occurred while trying to retrieve vehicle by type.", ex);
+                //Implement Logging of exception.
+            }
+        }
 
         [HttpPost]
         [Route("add-sedan")]
